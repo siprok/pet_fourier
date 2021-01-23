@@ -116,6 +116,7 @@ def fft_of_complex_from_real_and_imag_fft(fft_real: np.ndarray, fft_imag: np.nda
 class Stend:
 
     def __init__(self):
+        self.window = tk.Tk()
         self.type_real = float
         self.type_complex = complex
         self.plots_shape_min = 1
@@ -125,25 +126,6 @@ class Stend:
                             "действительный": self.type_real,
                             "комплексный": self.type_complex
                         }
-
-        self.signal_func_dict = {
-                        "kX + b": lambda x, args: args["k"] * x + args["b"],
-                        "s * sin(kX + b) + d": lambda x, args: args["s"] * np.sin(args["k"] * x + args["b"]) + args["d"],
-                        "s * ln(kX + b) + d": lambda x, args: args["s"] * np.log(args["k"] * x + args["b"]) + args["d"]
-                    }
-
-        self.signal_func_param_dict = {
-                                    self.signal_func_dict["kX + b"]: ["k", "b"],
-                                    self.signal_func_dict["s * sin(kX + b) + d"]: ["s", "k", "b", "d"],
-                                    self.signal_func_dict["s * ln(kX + b) + d"]: ["s", "k", "b", "d"]
-                                }
-        
-        self.signal_param_check_dict = {
-                                    "s": {"type": float, "condition": lambda x: True},
-                                    "k": {"type": float, "condition": lambda x: True},
-                                    "b": {"type": float, "condition": lambda x: True},
-                                    "d": {"type": float, "condition": lambda x: True}
-                                }
 
         self.noise_exist_dict = {
                                 "отсутствует": False,
@@ -300,7 +282,7 @@ class Stend:
                                 }
 
         # число отсчётов сигнала
-        self.signal_size = [100]
+        self.signal_size = [128]
 
         # буферная переменная числа отсчётов
         self.signal_size_buf = [self.signal_size[0]]
@@ -311,18 +293,25 @@ class Stend:
         # массив функций сигнала 
         #   в случае действительного сигнала - 1 элемент
         #   в случае комплексного сигнала - 2 элемента (для амплитудной и фазовой части)
-        self.signal_func = [list(self.signal_func_dict.values())[0], list(self.signal_func_dict.values())[0]]
+        self.signal_func = [tk.StringVar(self.window), tk.StringVar(self.window)]
+        self.signal_func[0].set("0 * x + 1")
+        self.signal_func[1].set("0 * x + 1")        
 
         # границы области определения сигнала
         self.def_dom_borders = [0, 2 * 3.14]
 
         # массив области определения
         self.def_dom = np.linspace(self.def_dom_borders[0], self.def_dom_borders[1], self.signal_size[0])
-
-        # список словарей дополнительных аргументов для функций сигнала
-        #   в случае действительного сигнала - 1 объект
-        #   в случае комплексного сигнала - 2 объекта (для амплитудной и фазовой части)
-        self.signal_args = [{"k": 0, "b": 1, "s": 1, "d": 0}, {"k": 0, "b": 1, "s": 1, "d": 0}]
+ 
+        # Словарь переменных и функций для постановки в вычисления
+        self.eval_var_dict = {
+                                "sin": np.sin,
+                                "cos": np.cos,
+                                "exp": np.exp,
+                                "ln":  np.log,
+                                "lg":  np.log10,
+                                "x":   self.def_dom
+                            }
 
         # Словарь массивов значений различных видов сигнала
         self.signal = dict()
@@ -332,7 +321,7 @@ class Stend:
 
         for label in ["source", "clear"]:
             # массив значений сигнала/ сигнала без наложения шума
-            self.signal[label] = self.signal_func[0](self.def_dom, self.signal_args[0]).astype(self.type_real)
+            self.signal[label] = eval(self.signal_func[0].get(),{}, self.eval_var_dict).astype(self.type_real)
             # словарь образов действительной и мнимой частей сигнала/ сигнала без наложения шума
             self.fft[label] = dict()
             # Фурье-образо действительной части сигнала/ сигнала без наложения шума
@@ -548,7 +537,6 @@ class Stend:
                                     }
 
         # окно грфического интерфейса
-        self.window = tk.Tk()
         self.main_window()
         self.window.mainloop()
 
@@ -598,6 +586,7 @@ class Stend:
         :param master: родительский элемент для данного блока
         :param grid_options: аргументы метода grid для размещения в родительском объекте
         """
+        
         # Локальные вспомогательные функции
         def func_type_choose(master, title: str, ind: int):
             """
@@ -608,49 +597,11 @@ class Stend:
             """
             # Создание объектов
             func_label = tk.Label(master, text=title)
-            func_cb = ttk.Combobox(master, values=list(self.signal_func_dict.keys()), state="readonly")
-            for i, f in enumerate(self.signal_func_dict.items()):
-                if f[1] == self.signal_func[ind]:
-                    func_cb.current(i)
-            args_dict = {"labels": dict(), "spins": dict()}
-            for coef in self.signal_args[ind].keys():
-                args_dict["labels"][coef] = tk.Label(master, text=coef+" =")
-                args_dict["spins"][coef] = ttk.Spinbox(master, from_=-10**6, to=10**6, width=6)
-                args_dict["spins"][coef].set(self.signal_args[ind][coef])
-                args_dict["spins"][coef].configure(command=cmd_type_to_hub(self.signal_args[ind], coef,\
-                                                                            args_dict["spins"][coef],\
-                                                                            self.signal_param_check_dict[coef]["type"],\
-                                                                            self.signal_param_check_dict[coef]["condition"]),\
-                                                   validate="all",\
-                                                   validatecommand=(master.register(validate_type_to_hub(self.signal_args[ind], coef,\
-                                                                                    args_dict["spins"][coef],\
-                                                                                    self.signal_param_check_dict[coef]["type"],\
-                                                                                    self.signal_param_check_dict[coef]["condition"])), "%P"))
-                
+            func_entry = tk.Entry(master, width=40, text=self.signal_func[ind], textvariable=self.signal_func[ind])
             # Размещение объектов
-            func_label.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="W")
-            func_cb.grid(row=2, column=2, columnspan=6, padx=5, pady=5, sticky="WE")
-            for i, p in enumerate(self.signal_func_param_dict[self.signal_func[ind]]):
-                args_dict["labels"][p].grid(row=3, column=i*2, pady=5, sticky="E")
-                args_dict["spins"][p].grid(row=3, column=i*2+1, pady=5, sticky="W")
+            func_label.grid(row=0, padx=5, pady=5, sticky="N")
+            func_entry.grid(row=1, padx=5, pady=5, sticky="N")
 
-            # Локальные обработчики событий
-            def func_handler(event):
-                """
-                Обработчик выбора функции сигнала
-                """
-                buf_func = self.signal_func_dict[event.widget.get()]
-                if not self.signal_func[ind] == buf_func:
-                    self.signal_func[ind] = buf_func
-                    for widget_type in args_dict.values():
-                        for widget in widget_type.values():
-                            widget.grid_forget()
-                    for i, p in enumerate(self.signal_func_param_dict[self.signal_func[ind]]):
-                        args_dict["labels"][p].grid(row=3, column=i*2, pady=5, sticky="E")
-                        args_dict["spins"][p].grid(row=3, column=i*2+1, pady=5, sticky="W")
-                
-            # Привязка к локальным обработчикам событий
-            func_cb.bind("<<ComboboxSelected>>", func_handler)
 
         def real_type_choose(target_frame):
             """
@@ -669,7 +620,7 @@ class Stend:
             func_type_choose(ampl_frame, "Функция \nамплитуды сигнала", 0)
             func_type_choose(phase_frame, "Функция \nфазы сигнала", 1)
         # Локальные обработчики событий
-        def targing_handler(target_frame):
+        def targeted_handler(target_frame):
             def signal_type_handler(event):
                 buf_type = self.signal_func_type_dict[event.widget.get()]
                 if not self.signal_func_type == buf_type:
@@ -705,7 +656,7 @@ class Stend:
         else:
             complex_type_choose(func_choose_frame)
         # Привязка локальных обработчиков событий
-        signal_type_cb.bind("<<ComboboxSelected>>", targing_handler(func_choose_frame))
+        signal_type_cb.bind("<<ComboboxSelected>>", targeted_handler(func_choose_frame))
 
 
     def def_dom_cell(self):
@@ -1206,8 +1157,9 @@ class Stend:
             try:
                 self.signal_size[0] = self.signal_size_buf[0]
                 self.def_dom = np.linspace(self.def_dom_borders[0], self.def_dom_borders[1], self.signal_size[0]).astype(self.type_real)  # область определения
+                self.eval_var_dict["x"] = self.def_dom
                 if self.signal_func_type == self.type_real: # действиельный сигнал
-                    self.signal["clear"] = self.signal_func[0](self.def_dom, self.signal_args[0]).astype(self.signal_func_type)
+                    self.signal["clear"] = eval(self.signal_func[0].get(), {}, self.eval_var_dict).astype(self.signal_func_type)
                     if self.noise_exist[0]: # с шумом           
                         self.signal["source"] = self.noise_type[0](self.signal["clear"],\
                                                         self.noise_func[0](self.def_dom, self.noise_args[0]).astype(self.signal_func_type))
@@ -1217,7 +1169,7 @@ class Stend:
                     signal_clear = np.zeros((2, self.signal_size[0]))
                     signal = np.zeros((2, self.signal_size[0]))
                     for ind in range(2):
-                        signal_clear[ind] = self.signal_func[ind](self.def_dom, self.signal_args[ind]).astype(self.type_real)
+                        signal_clear[ind] = eval(self.signal_func[ind].get(), {}, self.eval_var_dict).astype(self.type_real)
                         if self.noise_exist[ind]:  # с шумом
                             signal[ind] = self.noise_type[ind](signal_clear[ind],\
                                                             self.noise_func[ind](self.def_dom, self.noise_args[ind]).astype(self.type_real))                    
@@ -1248,7 +1200,7 @@ class Stend:
                 
                 # Получим сигнал из отфильтрованного спектра    
                 self.signal["filtered"] = np.fft.ifft(fft_of_complex_from_real_and_imag_fft(np.roll(self.fft["filtered"]["real"], - self.signal_size[0] // 2 + 1),
-                                                                                            np.roll(self.fft["filtered"]["imag"], - self.signal_size[0] // 2+ 1)))
+                                                                                            np.roll(self.fft["filtered"]["imag"], - self.signal_size[0] // 2 + 1)))
 
                 if self.signal_func_type == self.type_real:
                     self.signal["filtered"] = np.real(self.signal["filtered"]) 
@@ -1260,6 +1212,10 @@ class Stend:
                 messagebox.showwarning("Ошибка вычисления", "Выбранная функция сигнала или шума не определена \nв точках выбранной области определения.")
                 self.signal_calc_button.configure(state="normal")
                 return   
+            except SyntaxError:
+                messagebox.showwarning("Ошибка вычисления", "Синтаксическая ошибка в написании выражения.")
+                self.signal_calc_button.configure(state="normal")
+                return
 
         self.plots_type_dict.clear()
         # Заполним словарь функций отрисовки графиков
