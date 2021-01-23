@@ -9,7 +9,6 @@ import warnings
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.backend_bases import key_press_handler
 import matplotlib.pyplot as plt
-from matplotlib.backend_bases import key_press_handler
 from mpl_toolkits.mplot3d import Axes3D
 
 
@@ -1346,18 +1345,8 @@ class Stend:
         derivative += mean
         phfch[size // 2 :] = phfch[size // 2 - 1] + np.cumsum(derivative)
 
-        # Фильтрация левой половины массива ФЧХ центрированного сигнала
-        derivative = -np.diff(phfch[:size // 2])
-        mean = np.median(np.diff(phfch[:size // 2]))
-        derivative -= mean
-        # Получим значения производной абсолютной фазы (если бы фаза не ограничивалась полуинтервалом [-pi; pi))
-        derivative = np.where(derivative < -np.pi, derivative + 2 * np.pi, derivative)
-        derivative = np.where(derivative > np.pi, derivative - 2 * np.pi, derivative)
-        # Домножим на правую половину массива фильтра фазы
-        derivative *= self.filter[part][1, :size // 2 - 1] 
-        # Проинтегрируем полученную производную, приняв начальным условием значение стартового элемента правой половины
-        derivative -= mean
-        phfch[: size // 2 - 1] = (phfch[size // 2 - 1] + np.cumsum(derivative[::-1]))[::-1]
+        # Отражаем отфильрованную половину ФЧХ, используя свойство нечётности
+        phfch[: size // 2 - 1] = -phfch[size // 2 :-1][::-1]
         return phfch
 
 
